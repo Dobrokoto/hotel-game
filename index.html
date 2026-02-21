@@ -751,116 +751,259 @@ function drawGameScreen() {
   ctx.fillText(`${Math.floor(progress * 100)}%`, 20, 45);
 }
 
+// ─── Салюты ───────────────────────────────────────────────────────
+const fireworks = [
+  { x: 130, y: 90,  colors: ['#FFD700','#FF6090','#FFFFFF'], period: 70,  offset: 0  },
+  { x: 670, y: 80,  colors: ['#A040FF','#FFD700','#60FFFF'], period: 90,  offset: 30 },
+  { x: 260, y: 55,  colors: ['#FF4040','#FFD700','#FFFFFF'], period: 80,  offset: 15 },
+  { x: 540, y: 100, colors: ['#40FF80','#FF80FF','#FFD700'], period: 100, offset: 50 },
+  { x: 400, y: 45,  colors: ['#FFD700','#FF9030','#FFFFFF'], period: 60,  offset: 5  },
+];
+
+function drawFireworks() {
+  for (const fw of fireworks) {
+    const t = (animTick + fw.offset) % fw.period;
+    const phase = t / fw.period; // 0..1
+
+    // трейл ракеты (первая половина периода — летит вверх)
+    if (phase < 0.35) {
+      const rProgress = phase / 0.35;
+      const ry = fw.y + 120 * (1 - rProgress);
+      // хвост
+      for (let i = 0; i < 5; i++) {
+        const alpha = (1 - i / 5) * 0.8 * rProgress;
+        ctx.fillStyle = `rgba(255,220,80,${alpha})`;
+        ctx.fillRect(fw.x - 1, ry + i * 5, 2, 4);
+      }
+      // искра
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(fw.x - 2, ry - 3, 4, 4);
+    }
+
+    // взрыв (вторая половина)
+    if (phase >= 0.35) {
+      const eProgress = (phase - 0.35) / 0.65; // 0..1 внутри взрыва
+      const maxR = 55;
+      const r = eProgress * maxR;
+      const alpha = Math.max(0, 1 - eProgress * 1.4);
+
+      const rays = 12;
+      for (let i = 0; i < rays; i++) {
+        const angle = (i / rays) * Math.PI * 2;
+        const color = fw.colors[i % fw.colors.length];
+        const ex = fw.x + Math.cos(angle) * r;
+        const ey = fw.y + Math.sin(angle) * r + eProgress * eProgress * 20; // гравитация
+        // размер искры уменьшается
+        const sparkSize = Math.max(1, 4 * (1 - eProgress));
+
+        ctx.fillStyle = color.replace(')', `,${alpha})`).replace('rgb', 'rgba').replace('#', '');
+        // ручной hex → rgba
+        const hexToRgba = (hex, a) => {
+          const r2 = parseInt(hex.slice(1,3),16);
+          const g2 = parseInt(hex.slice(3,5),16);
+          const b2 = parseInt(hex.slice(5,7),16);
+          return `rgba(${r2},${g2},${b2},${a})`;
+        };
+        ctx.fillStyle = hexToRgba(color, alpha);
+        ctx.beginPath();
+        ctx.arc(ex, ey, sparkSize, 0, Math.PI * 2);
+        ctx.fill();
+
+        // вторичные искры (чуть отстают)
+        if (eProgress > 0.15) {
+          const r2 = (eProgress - 0.1) * maxR * 0.6;
+          const ex2 = fw.x + Math.cos(angle + Math.PI / rays) * r2;
+          const ey2 = fw.y + Math.sin(angle + Math.PI / rays) * r2 + (eProgress - 0.1) ** 2 * 20;
+          ctx.fillStyle = hexToRgba(fw.colors[(i + 1) % fw.colors.length], alpha * 0.7);
+          ctx.beginPath();
+          ctx.arc(ex2, ey2, sparkSize * 0.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // яркая вспышка в центре
+      if (eProgress < 0.25) {
+        const flashAlpha = (1 - eProgress / 0.25) * 0.9;
+        ctx.fillStyle = `rgba(255,255,255,${flashAlpha})`;
+        ctx.beginPath();
+        ctx.arc(fw.x, fw.y, 8 * (1 - eProgress / 0.25), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
+
 // ─── Экран победы ─────────────────────────────────────────────────
 function drawWinScreen() {
-  // фон
+  // ── ФОН: ночное небо ──
   const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, '#3A1060');
-  bg.addColorStop(1, '#1A0A2E');
+  bg.addColorStop(0, '#0D0628');
+  bg.addColorStop(0.6, '#1E0A4A');
+  bg.addColorStop(1, '#2A1060');
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
 
-  // звёзды
-  ctx.fillStyle = '#FFD700';
-  const stars = [
-    [50,30],[120,60],[200,20],[350,80],[450,30],[550,70],[650,20],[720,50],[780,80],
-    [80,150],[170,120],[300,140],[480,100],[600,160],[730,130],
+  // звёзды (мелкие, мерцают)
+  const starData = [
+    [40,25],[100,15],[180,35],[260,12],[340,28],[420,8],[500,22],[580,38],[660,14],[740,30],[790,20],
+    [70,70],[155,55],[235,80],[315,48],[395,72],[475,60],[555,42],[635,68],[715,52],[775,78],
+    [30,110],[120,95],[210,120],[300,100],[390,115],[480,90],[570,108],[650,92],[730,118],
   ];
-  for (const [sx, sy] of stars) {
-    const s = Math.sin(animTick * 0.05 + sx) * 0.5 + 1;
+  for (const [sx, sy] of starData) {
+    const s = Math.sin(animTick * 0.04 + sx * 0.3) * 0.6 + 1;
+    const alpha = Math.sin(animTick * 0.06 + sy * 0.5) * 0.3 + 0.7;
+    ctx.fillStyle = `rgba(255,240,180,${alpha})`;
     ctx.beginPath();
     ctx.arc(sx, sy, s, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // маленькая игровая сцена вверху
-  ctx.save();
-  const sceneH = 160;
-  const skyG = ctx.createLinearGradient(0, 0, 0, sceneH);
-  skyG.addColorStop(0, '#FFD700');
-  skyG.addColorStop(1, '#FFE880');
-  ctx.fillStyle = skyG;
-  ctx.fillRect(0, 0, W, sceneH);
-  drawMountains(WORLD_WIDTH * 0.8);
-  // нарисуем землю только для сцены
-  px(-5, sceneH - 30, W + 10, 30, C.ground);
-  px(-5, sceneH - 36, W + 10, 10, C.grass);
-  ctx.restore();
+  // ── САЛЮТЫ ──
+  drawFireworks();
 
-  // персонаж у отеля
-  const winPlayerX = W - 240;
-  ctx.save();
-  ctx.scale(0.9, 0.9);
-  drawPlayer(winPlayerX / 0.9, (GROUND_Y * 0.25) / 0.9 - 30, 0, true);
-  ctx.restore();
+  // ── ЗЕМЛЯ внизу (сцена) ──
+  const groundY = H - 90;
+  px(0, groundY, W, H - groundY, C.ground);
+  px(0, groundY, W, 10, C.grass);
+  // травинки
+  for (let gx = 0; gx < W; gx += 20) {
+    ctx.fillStyle = '#5A7E2A';
+    ctx.fillRect(gx + 3,  groundY - 7, 2, 7);
+    ctx.fillRect(gx + 10, groundY - 5, 2, 5);
+    ctx.fillRect(gx + 15, groundY - 8, 2, 8);
+  }
 
-  // отель в сцене победы
-  ctx.save();
-  ctx.scale(0.5, 0.5);
-  const hotelDrawX = W * 2 - 220;
-  const sx_ = hotelDrawX;
-  const hw = 160, hh = 200;
-  const hx = sx_, hy = (GROUND_Y * 0.25 * 2) - hh - 20;
-  px(hx, hy, hw, hh, C.brownD);
-  px(hx + 4, hy + 4, hw - 8, hh - 4, '#8B6040');
-  for (let floor = 0; floor < 3; floor++) {
-    for (let win = 0; win < 3; win++) {
-      const wx = hx + 14 + win * 44;
-      const wy = hy + 20 + floor * 44;
-      px(wx, wy, 24, 26, C.yellowD);
-      px(wx + 2, wy + 2, 20, 22, C.blue);
+  // ── ОТЕЛЬ (правая часть) ──
+  const hotelX = W - 210;
+  const hotelY = groundY - 180;
+  const hw = 150, hh = 180;
+  px(hotelX, hotelY, hw, hh, C.brownD);
+  px(hotelX + 4, hotelY + 4, hw - 8, hh - 4, '#8B6040');
+  // окна с огнями
+  for (let fl = 0; fl < 3; fl++) {
+    for (let wn = 0; wn < 3; wn++) {
+      const wx = hotelX + 12 + wn * 42;
+      const wy = hotelY + 28 + fl * 46;
+      px(wx, wy, 22, 28, C.yellowD);
+      px(wx + 2, wy + 2, 18, 24, C.blue);
+      px(wx + 9, wy, 4, 28, '#7A5030');
+      px(wx, wy + 12, 22, 4, '#7A5030');
+      if (Math.sin(animTick * 0.07 + fl * 1.3 + wn * 2.1) > 0) {
+        ctx.fillStyle = 'rgba(255,240,120,0.5)';
+        ctx.fillRect(wx + 2, wy + 2, 18, 24);
+      }
     }
   }
-  px(hx - 4, hy - 12, hw + 8, 16, C.purpleL);
-  ctx.fillStyle = C.yellow;
-  ctx.font = '7px "Press Start 2P"';
-  ctx.textAlign = 'center';
-  ctx.fillText('HOTEL', hx + hw / 2, hy + 28);
-  ctx.restore();
-
-  // флаг победы
-  const fsx = winPlayerX - 80;
-  ctx.save();
-  ctx.scale(0.8, 0.8);
-  const fsy = GROUND_Y * 0.25 * (1/0.8);
-  px(fsx / 0.8 + 4, fsy - 100, 4, 100, C.brownD);
-  ctx.fillStyle = C.purple;
-  ctx.fillRect(fsx / 0.8 + 8, fsy - 98, 36, 30);
+  px(hotelX - 4, hotelY - 14, hw + 8, 16, C.purpleL);
+  px(hotelX - 4, hotelY - 18, hw + 8, 8, C.purple);
+  px(hotelX + 8, hotelY + 8, hw - 16, 20, C.purple);
   ctx.fillStyle = C.yellow;
   ctx.font = '8px "Press Start 2P"';
   ctx.textAlign = 'center';
-  ctx.fillText('WIN', fsx / 0.8 + 26, fsy - 78);
-  ctx.restore();
+  ctx.fillText('HOTEL', hotelX + hw / 2, hotelY + 22);
+  // вход
+  const dw = 30, dh = 44;
+  px(hotelX + hw/2 - dw/2, groundY - dh, dw, dh, C.brownD);
+  px(hotelX + hw/2 - dw/2 + 2, groundY - dh + 2, dw - 4, dh - 2, C.yellowD);
+  // ступеньки
+  px(hotelX + hw/2 - 22, groundY - 6, 44, 6, C.grey);
+  px(hotelX + hw/2 - 18, groundY - 10, 36, 6, '#B8B8B8');
 
-  // ТЕКСТ ПОБЕДЫ
-  px(100, 175, 600, 80, C.purple);
-  px(104, 179, 592, 72, C.purpleL);
-
-  drawPixelText('ВЫ ПОБЕДИЛИ!', W / 2, 210, 24, C.yellow);
-  drawPixelText('ВАШ ПРОМОКОД:', W / 2, 248, 13, C.white);
-
-  // промокод
-  px(220, 255, 360, 60, C.black);
-  px(224, 259, 352, 52, '#2A1050');
-  // пунктир
-  ctx.setLineDash([8, 5]);
+  // ── ФЛАГ (левее отеля) ──
+  const flagX = hotelX - 70;
+  px(flagX + 4, groundY - 110, 4, 110, C.brownD);
+  const wave = Math.sin(animTick * 0.12) * 3;
+  ctx.fillStyle = C.yellow;
+  ctx.beginPath();
+  ctx.moveTo(flagX + 8, groundY - 108);
+  ctx.lineTo(flagX + 46 + wave, groundY - 96);
+  ctx.lineTo(flagX + 44, groundY - 80);
+  ctx.lineTo(flagX + 8, groundY - 78);
+  ctx.fill();
+  ctx.fillStyle = C.purple;
+  ctx.beginPath();
+  ctx.arc(flagX + 27, groundY - 94, 9, 0, Math.PI * 2);
+  ctx.fill();
   ctx.strokeStyle = C.yellow;
   ctx.lineWidth = 2;
-  ctx.strokeRect(228, 263, 344, 44);
+  ctx.beginPath();
+  ctx.ellipse(flagX + 27, groundY - 94, 13, 3.5, -0.3, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // ── ПЕРСОНАЖ (у отеля, радуется) ──
+  const charX = hotelX - 56;
+  const charBounce = Math.abs(Math.sin(animTick * 0.1)) * 5;
+  drawPlayer(charX, groundY - 48 - charBounce, Math.floor(animTick / 8) % 2, true);
+
+  // ── ЦЕНТРАЛЬНАЯ ПАНЕЛЬ ──
+  // тень панели
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(88, 148, 624, 238);
+  // рамка внешняя
+  px(80, 142, 624, 238, C.black);
+  // фон панели
+  const panelGrad = ctx.createLinearGradient(80, 142, 80, 380);
+  panelGrad.addColorStop(0, '#4A1880');
+  panelGrad.addColorStop(1, '#2A0E58');
+  ctx.fillStyle = panelGrad;
+  ctx.fillRect(84, 146, 616, 230);
+  // верхняя полоска-блик
+  px(84, 146, 616, 8, '#7A3AAA');
+  // пунктирная рамка
+  ctx.setLineDash([10, 6]);
+  ctx.strokeStyle = C.yellow;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(90, 152, 604, 218);
   ctx.setLineDash([]);
 
-  drawPixelText('PIXEL20', W / 2, 293, 26, C.yellow);
+  // ── ТЕКСТ ПОБЕДИЛИ ──
+  drawPixelText('ВЫ ПОБЕДИЛИ!', W / 2, 192, 26, C.yellow);
 
-  // кнопка ИГРАТЬ СНОВА
-  const bx = 270, by = 330, bw = 260, bh = 50;
+  // разделитель
+  px(160, 200, 480, 3, C.purpleL);
+
+  // ── ПРОМОКОД ──
+  drawPixelText('ВАШ ПРОМОКОД:', W / 2, 232, 11, '#D0A0FF');
+
+  // блок промокода
+  px(220, 242, 360, 56, '#0A0020');
+  px(222, 244, 356, 52, '#120830');
+  ctx.setLineDash([10, 5]);
+  ctx.strokeStyle = C.yellow;
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(226, 248, 348, 44);
+  ctx.setLineDash([]);
+
+  // мерцание промокода
+  const promoGlow = Math.sin(animTick * 0.08) * 0.15 + 0.85;
+  ctx.fillStyle = `rgba(255,215,0,${promoGlow})`;
+  ctx.font = '28px "Press Start 2P"';
+  ctx.textAlign = 'center';
+  // тень
+  ctx.fillStyle = `rgba(80,0,120,0.8)`;
+  ctx.fillText('PIXEL20', W / 2 + 2, 282 + 2);
+  ctx.fillStyle = `rgba(255,215,0,${promoGlow})`;
+  ctx.fillText('PIXEL20', W / 2, 282);
+
+  // ── КНОПКА ИГРАТЬ СНОВА ──
+  const bx = 272, by = 308, bw = 256, bh = 48;
+  const btnHover = Math.sin(animTick * 0.06) * 0.5 + 0.5;
+  // тень
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(bx + 4, by + 4, bw, bh);
+  // рамка
   px(bx, by, bw, bh, C.black);
-  px(bx + 3, by + 3, bw - 6, bh - 6, C.purple);
-  px(bx + 3, by + 3, bw - 6, 6, C.purpleL);
+  // фон кнопки (пульсирует)
+  const btnColor = `rgb(${Math.floor(100 + btnHover * 20)},${Math.floor(40 + btnHover * 10)},${Math.floor(160 + btnHover * 20)})`;
+  ctx.fillStyle = btnColor;
+  ctx.fillRect(bx + 2, by + 2, bw - 4, bh - 4);
+  // блик
+  px(bx + 2, by + 2, bw - 4, 7, '#9A5ACA');
 
-  drawPixelText('ИГРАТЬ СНОВА', W / 2, by + 30, 14, C.yellow);
+  drawPixelText('ИГРАТЬ СНОВА', W / 2, by + 30, 13, C.yellow);
 
-  // логотип
-  drawPixelText('Яндекс Путешествия', W / 2, 415, 10, C.grey);
+  // ── ЛОГОТИП ──
+  drawPixelText('Яндекс Путешествия', W / 2, H - 12, 9, 'rgba(180,140,220,0.8)');
 }
 
 // ─── Главный цикл ─────────────────────────────────────────────────
