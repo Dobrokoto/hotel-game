@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Дорога до отеля</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+  }
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: pointer;
+    max-width: 100vw;
+    max-height: 100vh;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="800" height="450"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// ─── Константы ───────────────────────────────────────────────────
+const W = 800, H = 450;
+const GROUND_Y = 360;
+const GRAVITY = 0.6;
+const JUMP_FORCE = -13;
+const PLAYER_SPEED = 3;
+const WORLD_WIDTH = 3200;
+const S = 3; // масштаб пиксель-арт спрайтов
+
+// ─── Цвета ───────────────────────────────────────────────────────
+const C = {
+  sky:       '#FFE066',
+  skyDeep:   '#FFD700',
+  mountain1: '#C8850A',
+  mountain2: '#E8A800',
+  ground:    '#5C3A1E',
+  grass:     '#7A9E3A',
+  purple:    '#6B2FA0',
+  purpleL:   '#9B4FD0',
+  yellow:    '#FFD700',
+  yellowD:   '#E8A800',
+  white:     '#FFFFFF',
+  black:     '#1A0A2E',
+  brown:     '#7A4A1E',
+  brownD:    '#4A2A0E',
+  skin:      '#F5C5A3',
+  red:       '#E03030',
+  orange:    '#F07020',
+  grey:      '#A0A0A0',
+  greyD:     '#606060',
+  blue:      '#4080D0',
+  green:     '#30A030',
+};
+
+// ─── Состояние игры ───────────────────────────────────────────────
+let state = 'start'; // 'start' | 'play' | 'win'
+let camera = 0;
+let animTick = 0;
+let won = false;
+
+// ─── Игрок ───────────────────────────────────────────────────────
+const player = {
+  x: 80,
+  y: GROUND_Y - 48,
+  vy: 0,
+  onGround: true,
+  frame: 0,
+  frameTimer: 0,
+};
+
+// ─── Мир ─────────────────────────────────────────────────────────
+const platforms = [
+  { x: 400, y: GROUND_Y - 60, w: 120, h: 20 },
+  { x: 700, y: GROUND_Y - 80, w: 100, h: 20 },
+  { x: 1100, y: GROUND_Y - 70, w: 130, h: 20 },
+  { x: 1500, y: GROUND_Y - 90, w: 110, h: 20 },
+  { x: 1900, y: GROUND_Y - 60, w: 140, h: 20 },
+  { x: 2300, y: GROUND_Y - 80, w: 120, h: 20 },
+];
+
+const obstacles = [
+  { x: 550, y: GROUND_Y - 36, w: 24, h: 36 },
+  { x: 950, y: GROUND_Y - 36, w: 24, h: 36 },
+  { x: 1350, y: GROUND_Y - 36, w: 24, h: 36 },
+  { x: 1750, y: GROUND_Y - 36, w: 24, h: 36 },
+  { x: 2100, y: GROUND_Y - 36, w: 24, h: 36 },
+];
+
+const FLAG_X = 2700;
+const HOTEL_X = 2780;
+const WIN_X = FLAG_X + 60;
+
+// ─── Сброс игры ──────────────────────────────────────────────────
+function resetGame() {
+  player.x = 80;
+  player.y = GROUND_Y - 48;
+  player.vy = 0;
+  player.onGround = true;
+  player.frame = 0;
+  camera = 0;
+  won = false;
+  state = 'play';
+}
+
+// ─── Ввод ─────────────────────────────────────────────────────────
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    handleJump();
+  }
+});
+
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top) * scaleY;
+
+  if (state === 'start') {
+    // проверка клика по кнопке
+    if (cx > 290 && cx < 510 && cy > 260 && cy < 310) {
+      resetGame();
+    }
+  } else if (state === 'play') {
+    handleJump();
+  } else if (state === 'win') {
+    if (cx > 270 && cx < 530 && cy > 360 && cy < 410) {
+      resetGame();
+    }
+  }
+});
+
+function handleJump() {
+  if (state === 'start') { resetGame(); return; }
+  if (state === 'play' && player.onGround) {
+    player.vy = JUMP_FORCE;
+    player.onGround = false;
+  }
+}
+
+// ─── Физика ──────────────────────────────────────────────────────
+function updateGame() {
+  animTick++;
+
+  if (state !== 'play') return;
+
+  // движение игрока
+  player.x += PLAYER_SPEED;
+
+  // гравитация
+  player.vy += GRAVITY;
+  player.y += player.vy;
+
+  // земля
+  if (player.y >= GROUND_Y - 48) {
+    player.y = GROUND_Y - 48;
+    player.vy = 0;
+    player.onGround = true;
+  }
+
+  // платформы
+  for (const p of platforms) {
+    if (
+      player.x + 20 > p.x && player.x < p.x + p.w &&
+      player.y + 48 >= p.y && player.y + 48 <= p.y + p.h + 10 &&
+      player.vy >= 0
+    ) {
+      player.y = p.y - 48;
+      player.vy = 0;
+      player.onGround = true;
+    }
+  }
+
+  // препятствия — просто декоративные (не убивают)
+
+  // анимация бега
+  player.frameTimer++;
+  if (player.frameTimer > 8) {
+    player.frame = (player.frame + 1) % 2;
+    player.frameTimer = 0;
+  }
+
+  // камера
+  const targetCam = player.x - 150;
+  camera += (targetCam - camera) * 0.12;
+  camera = Math.max(0, Math.min(WORLD_WIDTH - W, camera));
+
+  // победа
+  if (player.x > WIN_X) {
+    state = 'win';
+  }
+}
+
+// ─── Рисование ──────────────────────────────────────────────────
+
+// Пиксельный прямоугольник (масштабированный)
+function px(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+// Горы на фоне
+function drawMountains(offsetX) {
+  const peaks = [
+    { x: 0, h: 160, w: 200 },
+    { x: 120, h: 220, w: 180 },
+    { x: 270, h: 170, w: 210 },
+    { x: 420, h: 240, w: 160 },
+    { x: 540, h: 180, w: 200 },
+    { x: 700, h: 200, w: 190 },
+    { x: 850, h: 150, w: 220 },
+  ];
+
+  // параллакс: горы двигаются медленнее
+  const ox = (offsetX * 0.3) % 1000;
+
+  for (let rep = -1; rep <= 1; rep++) {
+    for (const m of peaks) {
+      const mx = m.x - ox + rep * 1000;
+
+      // дальняя гора (светлее)
+      ctx.fillStyle = C.mountain2;
+      ctx.beginPath();
+      ctx.moveTo(mx, GROUND_Y - 40);
+      ctx.lineTo(mx + m.w / 2, GROUND_Y - 40 - m.h * 0.85);
+      ctx.lineTo(mx + m.w, GROUND_Y - 40);
+      ctx.fill();
+
+      // снег
+      ctx.fillStyle = '#FFF8DC';
+      ctx.beginPath();
+      ctx.moveTo(mx + m.w / 2, GROUND_Y - 40 - m.h * 0.85);
+      ctx.lineTo(mx + m.w / 2 - m.w * 0.08, GROUND_Y - 40 - m.h * 0.65);
+      ctx.lineTo(mx + m.w / 2 + m.w * 0.08, GROUND_Y - 40 - m.h * 0.65);
+      ctx.fill();
+    }
+  }
+
+  // ближние горы (темнее)
+  for (let rep = -1; rep <= 1; rep++) {
+    const peaks2 = [
+      { x: 50, h: 110, w: 160 },
+      { x: 200, h: 130, w: 140 },
+      { x: 350, h: 100, w: 170 },
+      { x: 490, h: 120, w: 150 },
+      { x: 640, h: 105, w: 160 },
+      { x: 780, h: 115, w: 145 },
+    ];
+    const ox2 = (offsetX * 0.5) % 900;
+    for (const m of peaks2) {
+      const mx = m.x - ox2 + rep * 900;
+      ctx.fillStyle = C.mountain1;
+      ctx.beginPath();
+      ctx.moveTo(mx, GROUND_Y - 40);
+      ctx.lineTo(mx + m.w / 2, GROUND_Y - 40 - m.h);
+      ctx.lineTo(mx + m.w, GROUND_Y - 40);
+      ctx.fill();
+    }
+  }
+}
+
+// Земля
+function drawGround(camX) {
+  const startX = Math.floor(camX / 32) * 32;
+  // земля
+  px(-5, GROUND_Y, W + 10, H - GROUND_Y + 5, C.ground);
+  // трава
+  for (let x = startX - camX - 32; x < W + 32; x += 32) {
+    px(x, GROUND_Y - 8, 32, 10, C.grass);
+    // травинки
+    ctx.fillStyle = '#6A8E2A';
+    ctx.fillRect(x + 4, GROUND_Y - 14, 2, 8);
+    ctx.fillRect(x + 10, GROUND_Y - 12, 2, 6);
+    ctx.fillRect(x + 18, GROUND_Y - 15, 2, 9);
+    ctx.fillRect(x + 26, GROUND_Y - 11, 2, 5);
+  }
+}
+
+// Платформа
+function drawPlatform(p, camX) {
+  const sx = p.x - camX;
+  // тело
+  px(sx, p.y, p.w, p.h, C.ground);
+  // верх (трава)
+  px(sx, p.y, p.w, 6, C.grass);
+  // тень снизу
+  px(sx + 2, p.y + p.h, p.w - 4, 4, 'rgba(0,0,0,0.2)');
+}
+
+// Препятствие (камень)
+function drawObstacle(o, camX) {
+  const sx = o.x - camX;
+  // камень
+  px(sx + 2, o.y + 8, o.w - 4, o.h - 8, C.greyD);
+  px(sx, o.y + 12, o.w, o.h - 12, C.grey);
+  px(sx + 4, o.y + 8, o.w - 8, 6, '#C0C0C0');
+  // трещина
+  ctx.strokeStyle = C.greyD;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(sx + o.w / 2, o.y + 10);
+  ctx.lineTo(sx + o.w / 2 - 4, o.y + 24);
+  ctx.lineTo(sx + o.w / 2 + 2, o.y + 32);
+  ctx.stroke();
+}
+
+// Флаг
+function drawFlag(camX) {
+  const sx = FLAG_X - camX;
+  if (sx < -20 || sx > W + 20) return;
+
+  // флагшток
+  px(sx + 4, GROUND_Y - 120, 4, 120, C.brownD);
+
+  // флаг (анимация полёта)
+  const wave = Math.sin(animTick * 0.1) * 3;
+  ctx.fillStyle = C.yellow;
+  ctx.beginPath();
+  ctx.moveTo(sx + 8, GROUND_Y - 118);
+  ctx.lineTo(sx + 48 + wave, GROUND_Y - 108);
+  ctx.lineTo(sx + 48, GROUND_Y - 92);
+  ctx.lineTo(sx + 8, GROUND_Y - 88);
+  ctx.fill();
+
+  // планета на флаге
+  ctx.fillStyle = C.purple;
+  ctx.beginPath();
+  ctx.arc(sx + 28, GROUND_Y - 103, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = C.yellow;
+  ctx.beginPath();
+  ctx.ellipse(sx + 28, GROUND_Y - 103, 15, 4, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = C.purple;
+  ctx.beginPath();
+  ctx.arc(sx + 28, GROUND_Y - 103, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = C.yellow;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(sx + 28, GROUND_Y - 103, 14, 4, -0.3, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+// Отель
+function drawHotel(camX) {
+  const sx = HOTEL_X - camX;
+  if (sx > W + 20) return;
+
+  const hw = 160, hh = 200;
+  const hx = sx, hy = GROUND_Y - hh;
+
+  // основное здание
+  px(hx, hy, hw, hh, C.brownD);
+  px(hx + 4, hy + 4, hw - 8, hh - 4, '#8B6040');
+
+  // этажи — окна
+  for (let floor = 0; floor < 4; floor++) {
+    for (let win = 0; win < 3; win++) {
+      const wx = hx + 14 + win * 44;
+      const wy = hy + 20 + floor * 44;
+      px(wx, wy, 24, 30, C.yellowD);
+      px(wx + 2, wy + 2, 20, 26, C.blue);
+      // рама
+      px(wx + 10, wy, 4, 30, '#7A5030');
+      px(wx, wy + 13, 24, 4, '#7A5030');
+      // свет в окне (анимация)
+      if (Math.sin(animTick * 0.05 + floor + win) > 0) {
+        ctx.fillStyle = 'rgba(255, 240, 150, 0.4)';
+        ctx.fillRect(wx + 2, wy + 2, 20, 26);
+      }
+    }
+  }
+
+  // крыша
+  px(hx - 4, hy - 12, hw + 8, 16, C.purpleL);
+  px(hx - 4, hy - 16, hw + 8, 8, C.purple);
+
+  // вывеска HOTEL
+  px(hx + 10, hy + 10, hw - 20, 20, C.purple);
+  ctx.fillStyle = C.yellow;
+  ctx.font = 'bold 14px "Courier New"';
+  ctx.textAlign = 'center';
+  ctx.fillText('HOTEL', hx + hw / 2, hy + 24);
+
+  // вход
+  const dw = 32, dh = 48;
+  const dx = hx + hw / 2 - dw / 2, dy = GROUND_Y - dh;
+  px(dx, dy, dw, dh, C.brownD);
+  px(dx + 2, dy + 2, dw - 4, dh - 2, C.yellowD);
+  ctx.strokeStyle = C.brownD;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(dx + 2, dy + 2, dw - 4, dh - 2);
+
+  // ступеньки
+  px(hx + hw / 2 - 24, GROUND_Y - 6, 48, 6, C.grey);
+  px(hx + hw / 2 - 20, GROUND_Y - 10, 40, 6, '#B0B0B0');
+}
+
+// Путешественник — пиксель-арт из прямоугольников
+function drawPlayer(x, y, frame, onGround) {
+  const px_ = (dx, dy, w, h, c) => px(x + dx, y + dy, w, h, c);
+
+  // тень
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(x + 10, y + 48, 12, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ГОЛОВА
+  px_(4, 0, 16, 14, C.skin);      // лицо
+  px_(4, 0, 16, 4, C.brown);      // волосы
+  px_(2, 1, 4, 6, C.brown);       // волосы сбоку
+  px_(8, 6, 3, 3, C.black);       // левый глаз
+  px_(13, 6, 3, 3, C.black);      // правый глаз
+  px_(10, 11, 6, 2, C.brownD);    // рот
+
+  // КУРТКА (тело) — жёлтая
+  px_(2, 14, 20, 18, C.yellow);
+  px_(2, 14, 8, 18, C.yellowD);   // лацкан
+  px_(14, 14, 8, 18, C.yellowD);  // лацкан
+  px_(8, 14, 8, 18, C.white);     // рубашка
+
+  // РУКИ
+  if (frame === 0) {
+    px_(-2, 16, 6, 12, C.yellow); // левая рука вниз
+    px_(20, 14, 6, 12, C.yellow); // правая рука вниз
+  } else {
+    px_(-2, 14, 6, 14, C.yellow); // левая рука вперёд
+    px_(20, 16, 6, 14, C.yellow); // правая рука назад
+  }
+
+  // ШТАНЫ (коричневые)
+  px_(2, 32, 20, 16, C.brownD);
+
+  // НОГИ (анимация бега)
+  if (!onGround) {
+    // прыжок
+    px_(2, 48, 8, 6, C.brown);
+    px_(14, 46, 8, 6, C.brown);
+  } else if (frame === 0) {
+    px_(2, 48, 8, 10, C.brown);    // левая нога
+    px_(14, 44, 8, 10, C.brown);   // правая нога вперёд
+    px_(2, 56, 10, 4, C.brownD);   // обувь лево
+    px_(12, 52, 10, 4, C.brownD);  // обувь право
+  } else {
+    px_(2, 44, 8, 10, C.brown);    // левая нога назад
+    px_(14, 48, 8, 10, C.brown);   // правая нога
+    px_(0, 52, 10, 4, C.brownD);   // обувь лево
+    px_(14, 56, 10, 4, C.brownD);  // обувь право
+  }
+
+  // ЧЕМОДАН
+  const cx_ = frame === 0 ? -14 : -12;
+  px_(cx_, 26, 14, 18, C.purple);
+  px_(cx_ + 2, 26, 10, 18, C.purpleL);
+  px_(cx_ + 4, 23, 6, 4, C.purpleL);  // ручка
+  px_(cx_ + 6, 32, 2, 6, C.yellow);   // замок
+  // полоса
+  px_(cx_ + 2, 33, 10, 2, C.yellowD);
+}
+
+// Облака
+function drawClouds(camX) {
+  const clouds = [
+    { x: 100, y: 60, s: 1 },
+    { x: 300, y: 40, s: 0.8 },
+    { x: 600, y: 70, s: 1.1 },
+    { x: 900, y: 50, s: 0.9 },
+    { x: 1200, y: 65, s: 1 },
+    { x: 1500, y: 45, s: 0.85 },
+    { x: 1800, y: 75, s: 1.1 },
+    { x: 2100, y: 55, s: 0.9 },
+  ];
+
+  for (const cl of clouds) {
+    const sx = (cl.x - camX * 0.2 + WORLD_WIDTH * 2) % (WORLD_WIDTH + W) - 100;
+    const s = cl.s * 40;
+
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.arc(sx, cl.y, s, 0, Math.PI * 2);
+    ctx.arc(sx + s, cl.y - s * 0.3, s * 0.8, 0, Math.PI * 2);
+    ctx.arc(sx - s, cl.y - s * 0.2, s * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Пиксельный шрифт — рисуем через большой ctx.font
+function drawPixelText(text, x, y, size, color, align = 'center') {
+  ctx.font = `bold ${size}px "Courier New"`;
+  ctx.textAlign = align;
+  ctx.fillStyle = C.black;
+  ctx.fillText(text, x + 2, y + 2);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+// ─── Старт-экран ──────────────────────────────────────────────────
+function drawStartScreen() {
+  // небо — градиент
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  skyGrad.addColorStop(0, '#FFCC00');
+  skyGrad.addColorStop(1, '#FFE880');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  drawMountains(0);
+  drawGround(0);
+
+  // затемнение для читаемости
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fillRect(0, 0, W, H);
+
+  // заголовок — рамка
+  px(160, 80, 480, 120, C.purple);
+  px(164, 84, 472, 112, C.purpleL);
+
+  drawPixelText('ЭПИЧЕСКОЕ', W / 2, 132, 40, C.yellow);
+  drawPixelText('ПРИКЛЮЧЕНИЕ', W / 2, 178, 36, C.yellow);
+
+  // подзаголовок
+  drawPixelText('Дорога до отеля', W / 2, 230, 22, C.white);
+
+  // кнопка ИГРАТЬ
+  const bx = 290, by = 258, bw = 220, bh = 52;
+  px(bx, by, bw, bh, C.black);
+  px(bx + 3, by + 3, bw - 6, bh - 6, C.purple);
+  // блик
+  px(bx + 3, by + 3, bw - 6, 6, C.purpleL);
+  // пунктирная рамка
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = C.yellow;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bx + 6, by + 6, bw - 12, bh - 12);
+  ctx.setLineDash([]);
+
+  drawPixelText('ИГРАТЬ', W / 2, by + 34, 24, C.yellow);
+
+  // подсказка
+  drawPixelText('ПРОБЕЛ / НАЖМИТЕ для прыжка', W / 2, 340, 14, C.white);
+
+  // маленький персонаж на превью
+  drawPlayer(340, 360, Math.floor(animTick / 8) % 2, true);
+
+  // маленький отель
+  ctx.save();
+  ctx.scale(0.6, 0.6);
+  drawHotel(-(W * 0.6 - 60));
+  ctx.restore();
+}
+
+// ─── Экран игры ───────────────────────────────────────────────────
+function drawGameScreen() {
+  // небо
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  skyGrad.addColorStop(0, '#FFD700');
+  skyGrad.addColorStop(1, '#FFE880');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  drawClouds(camera);
+  drawMountains(camera);
+  drawGround(camera);
+
+  // платформы
+  for (const p of platforms) {
+    drawPlatform(p, camera);
+  }
+
+  // препятствия
+  for (const o of obstacles) {
+    drawObstacle(o, camera);
+  }
+
+  // флаг
+  drawFlag(camera);
+
+  // отель
+  drawHotel(camera);
+
+  // персонаж
+  drawPlayer(player.x - camera, player.y, player.frame, player.onGround);
+
+  // прогресс-бар
+  const progress = Math.min(player.x / WIN_X, 1);
+  px(20, 20, 200, 12, 'rgba(0,0,0,0.4)');
+  px(21, 21, Math.floor(198 * progress), 10, C.purple);
+  // иконка старта и финиша
+  ctx.fillStyle = C.white;
+  ctx.font = '10px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText('🏁', 215, 31);
+  ctx.fillText(`${Math.floor(progress * 100)}%`, 20, 45);
+}
+
+// ─── Экран победы ─────────────────────────────────────────────────
+function drawWinScreen() {
+  // фон
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#3A1060');
+  bg.addColorStop(1, '#1A0A2E');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // звёзды
+  ctx.fillStyle = '#FFD700';
+  const stars = [
+    [50,30],[120,60],[200,20],[350,80],[450,30],[550,70],[650,20],[720,50],[780,80],
+    [80,150],[170,120],[300,140],[480,100],[600,160],[730,130],
+  ];
+  for (const [sx, sy] of stars) {
+    const s = Math.sin(animTick * 0.05 + sx) * 0.5 + 1;
+    ctx.beginPath();
+    ctx.arc(sx, sy, s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // маленькая игровая сцена вверху
+  ctx.save();
+  const sceneH = 160;
+  const skyG = ctx.createLinearGradient(0, 0, 0, sceneH);
+  skyG.addColorStop(0, '#FFD700');
+  skyG.addColorStop(1, '#FFE880');
+  ctx.fillStyle = skyG;
+  ctx.fillRect(0, 0, W, sceneH);
+  drawMountains(WORLD_WIDTH * 0.8);
+  // нарисуем землю только для сцены
+  px(-5, sceneH - 30, W + 10, 30, C.ground);
+  px(-5, sceneH - 36, W + 10, 10, C.grass);
+  ctx.restore();
+
+  // персонаж у отеля
+  const winPlayerX = W - 240;
+  ctx.save();
+  ctx.scale(0.9, 0.9);
+  drawPlayer(winPlayerX / 0.9, (GROUND_Y * 0.25) / 0.9 - 30, 0, true);
+  ctx.restore();
+
+  // отель в сцене победы
+  ctx.save();
+  ctx.scale(0.5, 0.5);
+  const hotelDrawX = W * 2 - 220;
+  const sx_ = hotelDrawX;
+  const hw = 160, hh = 200;
+  const hx = sx_, hy = (GROUND_Y * 0.25 * 2) - hh - 20;
+  px(hx, hy, hw, hh, C.brownD);
+  px(hx + 4, hy + 4, hw - 8, hh - 4, '#8B6040');
+  for (let floor = 0; floor < 3; floor++) {
+    for (let win = 0; win < 3; win++) {
+      const wx = hx + 14 + win * 44;
+      const wy = hy + 20 + floor * 44;
+      px(wx, wy, 24, 26, C.yellowD);
+      px(wx + 2, wy + 2, 20, 22, C.blue);
+    }
+  }
+  px(hx - 4, hy - 12, hw + 8, 16, C.purpleL);
+  ctx.fillStyle = C.yellow;
+  ctx.font = 'bold 14px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('HOTEL', hx + hw / 2, hy + 28);
+  ctx.restore();
+
+  // флаг победы
+  const fsx = winPlayerX - 80;
+  ctx.save();
+  ctx.scale(0.8, 0.8);
+  const fsy = GROUND_Y * 0.25 * (1/0.8);
+  px(fsx / 0.8 + 4, fsy - 100, 4, 100, C.brownD);
+  ctx.fillStyle = C.purple;
+  ctx.fillRect(fsx / 0.8 + 8, fsy - 98, 36, 30);
+  ctx.fillStyle = C.yellow;
+  ctx.font = '12px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('WIN', fsx / 0.8 + 26, fsy - 78);
+  ctx.restore();
+
+  // ТЕКСТ ПОБЕДЫ
+  px(100, 175, 600, 80, C.purple);
+  px(104, 179, 592, 72, C.purpleL);
+
+  drawPixelText('ВЫ ПОБЕДИЛИ!', W / 2, 210, 36, C.yellow);
+  drawPixelText('ВАШ ПРОМОКОД НА ОТЕЛЬ:', W / 2, 240, 20, C.white);
+
+  // промокод
+  px(220, 255, 360, 60, C.black);
+  px(224, 259, 352, 52, '#2A1050');
+  // пунктир
+  ctx.setLineDash([8, 5]);
+  ctx.strokeStyle = C.yellow;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(228, 263, 344, 44);
+  ctx.setLineDash([]);
+
+  drawPixelText('PIXEL20', W / 2, 293, 32, C.yellow);
+
+  // кнопка ИГРАТЬ СНОВА
+  const bx = 270, by = 330, bw = 260, bh = 50;
+  px(bx, by, bw, bh, C.black);
+  px(bx + 3, by + 3, bw - 6, bh - 6, C.purple);
+  px(bx + 3, by + 3, bw - 6, 6, C.purpleL);
+
+  drawPixelText('ИГРАТЬ СНОВА', W / 2, by + 30, 20, C.yellow);
+
+  // логотип
+  drawPixelText('Яндекс Путешествия', W / 2, 415, 16, C.grey);
+}
+
+// ─── Главный цикл ─────────────────────────────────────────────────
+function gameLoop() {
+  ctx.clearRect(0, 0, W, H);
+
+  updateGame();
+
+  if (state === 'start') {
+    drawStartScreen();
+  } else if (state === 'play') {
+    drawGameScreen();
+  } else if (state === 'win') {
+    drawWinScreen();
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+// Масштабирование под экран
+function resize() {
+  const scaleX = window.innerWidth / W;
+  const scaleY = window.innerHeight / H;
+  const scale = Math.min(scaleX, scaleY);
+  canvas.style.width = Math.floor(W * scale) + 'px';
+  canvas.style.height = Math.floor(H * scale) + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+gameLoop();
+</script>
+</body>
+</html>
