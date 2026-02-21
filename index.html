@@ -76,34 +76,61 @@ const player = {
 };
 
 // Спрайт walking: 4 кадра в строку, каждый 384×1024 (из 1536×1024)
+// Персонаж занимает ~60% ширины и ~70% высоты кадра (остальное — поля)
 const WALK_FRAMES = 4;
-const WALK_FRAME_W = 1536 / WALK_FRAMES; // 384
+const WALK_FRAME_W = 1536 / WALK_FRAMES; // 384 — полный кадр
 const WALK_FRAME_H = 1024;
-// Рендерим персонажа высотой 72px, ширину пропорционально
-const HERO_H = 72;
-const HERO_W = Math.round(HERO_H * (WALK_FRAME_W / WALK_FRAME_H)); // ~27
+// Crop: персонаж примерно в центре кадра, занимает ~55% ширины и ~65% высоты
+const WALK_CROP_X = Math.round(WALK_FRAME_W * 0.18);
+const WALK_CROP_Y = Math.round(WALK_FRAME_H * 0.18);
+const WALK_CROP_W = Math.round(WALK_FRAME_W * 0.70);
+const WALK_CROP_H = Math.round(WALK_FRAME_H * 0.70);
+// Рендерим персонажа высотой 90px
+const HERO_H = 90;
+const HERO_W = Math.round(HERO_H * (WALK_CROP_W / WALK_CROP_H));
 
-// Флаг: 2 кадра в строку
+// Флаг: 2 кадра в строку — флаг занимает ~70% ширины, ~80% высоты
 const FLAG_FRAMES = 2;
 const FLAG_FRAME_W = 1536 / FLAG_FRAMES; // 768
 const FLAG_FRAME_H = 1024;
-const FLAG_H = 160;
-const FLAG_W = Math.round(FLAG_H * (FLAG_FRAME_W / FLAG_FRAME_H)); // ~120
+// Crop флага (флаг + шток по центру)
+const FLAG_CROP_X = Math.round(FLAG_FRAME_W * 0.12);
+const FLAG_CROP_Y = Math.round(FLAG_FRAME_H * 0.05);
+const FLAG_CROP_W = Math.round(FLAG_FRAME_W * 0.75);
+const FLAG_CROP_H = Math.round(FLAG_FRAME_H * 0.88);
+const FLAG_H = 180;
+const FLAG_W = Math.round(FLAG_H * (FLAG_CROP_W / FLAG_CROP_H));
 
-// Отель — рендерим высотой 220px
-const HOTEL_H = 220;
-const HOTEL_W = Math.round(HOTEL_H * (1536 / 1024)); // ~330
+// Отель — рендерим высотой 240px
+const HOTEL_H = 240;
+const HOTEL_W = Math.round(HOTEL_H * (1536 / 1024));
 
-// Камень
-const ROCK_H = 60;
-const ROCK_W = Math.round(ROCK_H * (1536 / 1024)); // ~90
+// Камень — спрайт с полями, crop центр ~60%
+const ROCK_SRC_PAD = 0.20; // отступ с каждой стороны
+const ROCK_CROP_X = Math.round(1536 * ROCK_SRC_PAD);
+const ROCK_CROP_Y = Math.round(1024 * ROCK_SRC_PAD);
+const ROCK_CROP_W = Math.round(1536 * (1 - ROCK_SRC_PAD * 2));
+const ROCK_CROP_H = Math.round(1024 * (1 - ROCK_SRC_PAD * 2));
+const ROCK_H = 70;
+const ROCK_W = Math.round(ROCK_H * (ROCK_CROP_W / ROCK_CROP_H));
 
-// Тайл земли (квадратный спрайт)
-const GROUND_TILE = 48;
+// Земля: спрайт с полями ~20% с каждой стороны, crop центр
+const GND_CROP_X = Math.round(1536 * 0.22);
+const GND_CROP_Y = Math.round(1024 * 0.15);
+const GND_CROP_W = Math.round(1536 * 0.56);
+const GND_CROP_H = Math.round(1024 * 0.70);
+const GROUND_TILE = 56; // размер одного тайла на экране
 
-// Платформа
-const PLAT_H = 28;
-const PLAT_W = 140;
+// Фон: обрезаем нижние ~12% (полоса травы) — рисуем только небо+горы
+const BG_CROP_H_FRAC = 0.88; // используем верхние 88% фона
+
+// Платформа: crop центральная часть ~60% ширины, ~40% высоты
+const PLAT_CROP_X = Math.round(1536 * 0.18);
+const PLAT_CROP_Y = Math.round(1024 * 0.32);
+const PLAT_CROP_W = Math.round(1536 * 0.64);
+const PLAT_CROP_H = Math.round(1024 * 0.36);
+const PLAT_H = 32;
+const PLAT_W = 160;
 
 const FLAG_X = 2700;
 const HOTEL_X = 2750;
@@ -119,11 +146,11 @@ const platforms = [
 ];
 
 const obstacles = [
-  { x: 580,  y: GROUND_Y - ROCK_H },
-  { x: 980,  y: GROUND_Y - ROCK_H },
-  { x: 1380, y: GROUND_Y - ROCK_H },
-  { x: 1780, y: GROUND_Y - ROCK_H },
-  { x: 2150, y: GROUND_Y - ROCK_H },
+  { x: 580,  y: GROUND_Y - ROCK_H + 10 },
+  { x: 980,  y: GROUND_Y - ROCK_H + 10 },
+  { x: 1380, y: GROUND_Y - ROCK_H + 10 },
+  { x: 1780, y: GROUND_Y - ROCK_H + 10 },
+  { x: 2150, y: GROUND_Y - ROCK_H + 10 },
 ];
 
 // ─── Сброс ───────────────────────────────────────────────────────
@@ -205,45 +232,55 @@ function drawPixelText(text, x, y, size, color, align = 'center') {
 // ─── Фон ─────────────────────────────────────────────────────────
 function drawBackground(camX) {
   if (!imgs.background.complete || imgs.background.naturalWidth === 0) {
-    // fallback
     const g = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
     g.addColorStop(0, '#FFD700'); g.addColorStop(1, '#FFE880');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, GROUND_Y);
     return;
   }
-  // параллакс: фон едет медленнее
-  const parallax = (camX * 0.3) % W;
-  // рисуем дважды для бесшовного скролла
-  const imgW = imgs.background.naturalWidth;
-  const imgH = imgs.background.naturalHeight;
-  // вписываем по высоте до GROUND_Y
+  const imgW = imgs.background.naturalWidth;   // 1536
+  const imgH = imgs.background.naturalHeight;  // 1024
+  // Используем только верхние BG_CROP_H_FRAC (без полосы травы внизу)
+  const srcH = Math.round(imgH * BG_CROP_H_FRAC);
+  // Растягиваем на всю ширину экрана, высота — до GROUND_Y
+  const drawW = W;
   const drawH = GROUND_Y;
-  const drawW = Math.round(drawH * imgW / imgH);
-  for (let x = -parallax; x < W + drawW; x += drawW) {
-    ctx.drawImage(imgs.background, Math.round(x), 0, drawW, drawH);
+  // Параллакс: сдвиг на 0…imgW по горизонтали
+  const parallax = (camX * 0.25) % imgW;
+  // Рисуем через clip src по X: [parallax .. parallax+imgW] -> [0..W]
+  // Проще: масштабируем фон до нужной ширины и тайлим
+  const scaledW = Math.round(drawH * (imgW / srcH)); // ширина при масштабировании по высоте
+  const offsetX = -(parallax * scaledW / imgW) % scaledW;
+  for (let x = offsetX - scaledW; x < W + scaledW; x += scaledW) {
+    ctx.drawImage(imgs.background,
+      0, 0, imgW, srcH,           // src: весь width, верхние 88% высоты
+      Math.round(x), 0, scaledW, drawH); // dst
   }
 }
 
 // ─── Земля ───────────────────────────────────────────────────────
 function drawGround(camX) {
-  const startX = Math.floor(camX / GROUND_TILE) * GROUND_TILE - camX;
+  // Сначала заливаем всю землю коричневым
+  px(0, GROUND_Y, W, H - GROUND_Y, '#6B3A1E');
+
+  const startX = Math.floor(camX / GROUND_TILE) * GROUND_TILE - camX % GROUND_TILE;
   if (imgs.ground.complete && imgs.ground.naturalWidth > 0) {
-    for (let x = startX; x < W + GROUND_TILE; x += GROUND_TILE) {
-      ctx.drawImage(imgs.ground, Math.round(x), GROUND_Y - 8, GROUND_TILE, GROUND_TILE);
+    // Рисуем ряд тайлов по верхнему краю земли
+    for (let x = startX - GROUND_TILE; x < W + GROUND_TILE; x += GROUND_TILE) {
+      ctx.drawImage(imgs.ground,
+        GND_CROP_X, GND_CROP_Y, GND_CROP_W, GND_CROP_H,  // crop центр спрайта
+        Math.round(x), GROUND_Y - 10, GROUND_TILE, GROUND_TILE + 10);
     }
-    // заливка под тайлами
-    px(0, GROUND_Y - 8 + GROUND_TILE, W, H, '#5C3A1E');
-  } else {
-    px(0, GROUND_Y, W, H - GROUND_Y, '#5C3A1E');
   }
 }
 
 // ─── Платформа ───────────────────────────────────────────────────
 function drawPlatform(p, camX) {
   const sx = Math.round(p.x - camX);
-  if (sx > W + PLAT_W || sx < -PLAT_W) return;
+  if (sx > W + p.w || sx < -p.w) return;
   if (imgs.platform.complete && imgs.platform.naturalWidth > 0) {
-    ctx.drawImage(imgs.platform, sx, p.y - 4, p.w, PLAT_H + 4);
+    ctx.drawImage(imgs.platform,
+      PLAT_CROP_X, PLAT_CROP_Y, PLAT_CROP_W, PLAT_CROP_H,
+      sx, p.y, p.w, PLAT_H);
   } else {
     px(sx, p.y, p.w, PLAT_H, C.purple);
     px(sx, p.y, p.w, 6, C.yellow);
@@ -255,7 +292,9 @@ function drawRock(o, camX) {
   const sx = Math.round(o.x - camX);
   if (sx > W + ROCK_W || sx < -ROCK_W) return;
   if (imgs.rock.complete && imgs.rock.naturalWidth > 0) {
-    ctx.drawImage(imgs.rock, sx, o.y, ROCK_W, ROCK_H);
+    ctx.drawImage(imgs.rock,
+      ROCK_CROP_X, ROCK_CROP_Y, ROCK_CROP_W, ROCK_CROP_H,
+      sx - ROCK_W / 2, o.y, ROCK_W, ROCK_H);
   } else {
     px(sx, o.y, ROCK_W, ROCK_H, '#808080');
   }
@@ -265,10 +304,10 @@ function drawRock(o, camX) {
 function drawFlag(camX) {
   const sx = Math.round(FLAG_X - camX);
   if (sx > W + FLAG_W || sx < -FLAG_W) return;
-  const frame = Math.floor(animTick / 12) % FLAG_FRAMES;
+  const frame = Math.floor(animTick / 14) % FLAG_FRAMES;
   if (imgs.flag.complete && imgs.flag.naturalWidth > 0) {
     ctx.drawImage(imgs.flag,
-      frame * FLAG_FRAME_W, 0, FLAG_FRAME_W, FLAG_FRAME_H,
+      frame * FLAG_FRAME_W + FLAG_CROP_X, FLAG_CROP_Y, FLAG_CROP_W, FLAG_CROP_H,
       sx - FLAG_W / 2, GROUND_Y - FLAG_H, FLAG_W, FLAG_H);
   } else {
     px(sx + 4, GROUND_Y - 120, 4, 120, '#4A2A0E');
@@ -297,18 +336,18 @@ function drawPlayer(x, y, frame, onGround) {
   ctx.fill();
 
   if (!onGround && imgs.jumping.complete && imgs.jumping.naturalWidth > 0) {
-    // кадр прыжка — персонаж примерно по центру изображения
-    // обрезаем центральную часть: ~40% ширины от центра
-    const imgW = imgs.jumping.naturalWidth; // 1536
-    const imgH = imgs.jumping.naturalHeight; // 1024
-    const cropW = imgW * 0.45;
-    const cropX = (imgW - cropW) / 2;
-    const drawH = HERO_H;
-    const drawW = Math.round(drawH * (cropW / imgH));
-    ctx.drawImage(imgs.jumping, cropX, 0, cropW, imgH, x - 4, y, drawW, drawH);
+    // Прыжок: персонаж смещён вправо-вниз от центра, crop ~50% ширины центр
+    const jW = imgs.jumping.naturalWidth, jH = imgs.jumping.naturalHeight;
+    const jCropX = Math.round(jW * 0.28);
+    const jCropY = Math.round(jH * 0.05);
+    const jCropW = Math.round(jW * 0.48);
+    const jCropH = Math.round(jH * 0.88);
+    const jDrawH = HERO_H;
+    const jDrawW = Math.round(jDrawH * (jCropW / jCropH));
+    ctx.drawImage(imgs.jumping, jCropX, jCropY, jCropW, jCropH, x, y, jDrawW, jDrawH);
   } else if (imgs.walking.complete && imgs.walking.naturalWidth > 0) {
     ctx.drawImage(imgs.walking,
-      frame * WALK_FRAME_W, 0, WALK_FRAME_W, WALK_FRAME_H,
+      frame * WALK_FRAME_W + WALK_CROP_X, WALK_CROP_Y, WALK_CROP_W, WALK_CROP_H,
       x, y, HERO_W, HERO_H);
   } else {
     // fallback прямоугольник
