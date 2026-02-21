@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Дорога до отеля</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -12,7 +14,7 @@
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    font-family: 'Courier New', monospace;
+    font-family: 'Press Start 2P', monospace;
   }
   canvas {
     display: block;
@@ -392,7 +394,7 @@ function drawHotel(camX) {
   // вывеска HOTEL
   px(hx + 10, hy + 10, hw - 20, 20, C.purple);
   ctx.fillStyle = C.yellow;
-  ctx.font = 'bold 14px "Courier New"';
+  ctx.font = '8px "Press Start 2P"';
   ctx.textAlign = 'center';
   ctx.fillText('HOTEL', hx + hw / 2, hy + 24);
 
@@ -499,10 +501,11 @@ function drawClouds(camX) {
   }
 }
 
-// Пиксельный шрифт — рисуем через большой ctx.font
+// Пиксельный шрифт — Press Start 2P
 function drawPixelText(text, x, y, size, color, align = 'center') {
-  ctx.font = `bold ${size}px "Courier New"`;
+  ctx.font = `${size}px "Press Start 2P"`;
   ctx.textAlign = align;
+  // тень (смещение = 2px)
   ctx.fillStyle = C.black;
   ctx.fillText(text, x + 2, y + 2);
   ctx.fillStyle = color;
@@ -529,14 +532,14 @@ function drawStartScreen() {
   px(160, 80, 480, 120, C.purple);
   px(164, 84, 472, 112, C.purpleL);
 
-  drawPixelText('ЭПИЧЕСКОЕ', W / 2, 132, 40, C.yellow);
-  drawPixelText('ПРИКЛЮЧЕНИЕ', W / 2, 178, 36, C.yellow);
+  drawPixelText('ЭПИЧЕСКОЕ', W / 2, 132, 28, C.yellow);
+  drawPixelText('ПРИКЛЮЧЕНИЕ', W / 2, 172, 22, C.yellow);
 
   // подзаголовок
-  drawPixelText('Дорога до отеля', W / 2, 230, 22, C.white);
+  drawPixelText('Дорога до отеля', W / 2, 218, 14, C.white);
 
   // кнопка ИГРАТЬ
-  const bx = 290, by = 258, bw = 220, bh = 52;
+  const bx = 270, by = 242, bw = 260, bh = 52;
   px(bx, by, bw, bh, C.black);
   px(bx + 3, by + 3, bw - 6, bh - 6, C.purple);
   // блик
@@ -548,10 +551,10 @@ function drawStartScreen() {
   ctx.strokeRect(bx + 6, by + 6, bw - 12, bh - 12);
   ctx.setLineDash([]);
 
-  drawPixelText('ИГРАТЬ', W / 2, by + 34, 24, C.yellow);
+  drawPixelText('ИГРАТЬ', W / 2, by + 32, 20, C.yellow);
 
   // подсказка
-  drawPixelText('ПРОБЕЛ / НАЖМИТЕ для прыжка', W / 2, 340, 14, C.white);
+  drawPixelText('ПРОБЕЛ / ТАП = прыжок', W / 2, 332, 10, C.white);
 
   // маленький персонаж на превью
   drawPlayer(340, 360, Math.floor(animTick / 8) % 2, true);
@@ -601,7 +604,7 @@ function drawGameScreen() {
   px(21, 21, Math.floor(198 * progress), 10, C.purple);
   // иконка старта и финиша
   ctx.fillStyle = C.white;
-  ctx.font = '10px Courier New';
+  ctx.font = '10px "Press Start 2P"';
   ctx.textAlign = 'left';
   ctx.fillText('🏁', 215, 31);
   ctx.fillText(`${Math.floor(progress * 100)}%`, 20, 45);
@@ -669,7 +672,7 @@ function drawWinScreen() {
   }
   px(hx - 4, hy - 12, hw + 8, 16, C.purpleL);
   ctx.fillStyle = C.yellow;
-  ctx.font = 'bold 14px Courier New';
+  ctx.font = '7px "Press Start 2P"';
   ctx.textAlign = 'center';
   ctx.fillText('HOTEL', hx + hw / 2, hy + 28);
   ctx.restore();
@@ -683,7 +686,7 @@ function drawWinScreen() {
   ctx.fillStyle = C.purple;
   ctx.fillRect(fsx / 0.8 + 8, fsy - 98, 36, 30);
   ctx.fillStyle = C.yellow;
-  ctx.font = '12px Courier New';
+  ctx.font = '8px "Press Start 2P"';
   ctx.textAlign = 'center';
   ctx.fillText('WIN', fsx / 0.8 + 26, fsy - 78);
   ctx.restore();
@@ -692,8 +695,8 @@ function drawWinScreen() {
   px(100, 175, 600, 80, C.purple);
   px(104, 179, 592, 72, C.purpleL);
 
-  drawPixelText('ВЫ ПОБЕДИЛИ!', W / 2, 210, 36, C.yellow);
-  drawPixelText('ВАШ ПРОМОКОД НА ОТЕЛЬ:', W / 2, 240, 20, C.white);
+  drawPixelText('ВЫ ПОБЕДИЛИ!', W / 2, 210, 24, C.yellow);
+  drawPixelText('ВАШ ПРОМОКОД:', W / 2, 248, 13, C.white);
 
   // промокод
   px(220, 255, 360, 60, C.black);
@@ -705,7 +708,7 @@ function drawWinScreen() {
   ctx.strokeRect(228, 263, 344, 44);
   ctx.setLineDash([]);
 
-  drawPixelText('PIXEL20', W / 2, 293, 32, C.yellow);
+  drawPixelText('PIXEL20', W / 2, 293, 26, C.yellow);
 
   // кнопка ИГРАТЬ СНОВА
   const bx = 270, by = 330, bw = 260, bh = 50;
@@ -713,10 +716,10 @@ function drawWinScreen() {
   px(bx + 3, by + 3, bw - 6, bh - 6, C.purple);
   px(bx + 3, by + 3, bw - 6, 6, C.purpleL);
 
-  drawPixelText('ИГРАТЬ СНОВА', W / 2, by + 30, 20, C.yellow);
+  drawPixelText('ИГРАТЬ СНОВА', W / 2, by + 30, 14, C.yellow);
 
   // логотип
-  drawPixelText('Яндекс Путешествия', W / 2, 415, 16, C.grey);
+  drawPixelText('Яндекс Путешествия', W / 2, 415, 10, C.grey);
 }
 
 // ─── Главный цикл ─────────────────────────────────────────────────
