@@ -38,7 +38,7 @@ const GROUND_Y = 360;
 const GRAVITY = 0.6;
 const JUMP_FORCE = -13;
 const PLAYER_SPEED = 3;
-const WORLD_WIDTH = 3200;
+const WORLD_WIDTH = 3400;
 const S = 3; // масштаб пиксель-арт спрайтов
 
 // ─── Цвета ───────────────────────────────────────────────────────
@@ -67,10 +67,11 @@ const C = {
 };
 
 // ─── Состояние игры ───────────────────────────────────────────────
-let state = 'start'; // 'start' | 'play' | 'win'
+let state = 'start'; // 'start' | 'play' | 'jump' | 'splash' | 'win'
 let camera = 0;
 let animTick = 0;
 let won = false;
+let splashTick = 0;   // таймер анимации брызг
 
 // ─── Игрок ───────────────────────────────────────────────────────
 const player = {
@@ -102,7 +103,9 @@ const obstacles = [
 
 const FLAG_X = 2700;
 const HOTEL_X = 2780;
-const WIN_X = FLAG_X + 60;
+const POOL_X = 2980;   // бассейн правее отеля
+const WIN_X = FLAG_X + 60; // триггер «финиш» — запускает анимацию прыжка
+const SPLASH_X = POOL_X + 40; // центр бассейна куда прыгает герой
 
 // ─── Сброс игры ──────────────────────────────────────────────────
 function resetGame() {
@@ -113,6 +116,7 @@ function resetGame() {
   player.frame = 0;
   camera = 0;
   won = false;
+  splashTick = 0;
   state = 'play';
 }
 
@@ -200,8 +204,54 @@ function updateGame() {
   camera += (targetCam - camera) * 0.12;
   camera = Math.max(0, Math.min(WORLD_WIDTH - W, camera));
 
-  // победа
-  if (player.x > WIN_X) {
+  // финиш: персонаж добежал до флага — запускаем анимацию прыжка в бассейн
+  if (player.x > WIN_X && state === 'play') {
+    state = 'jump';
+  }
+}
+
+function updateJump() {
+  animTick++;
+  // персонаж продолжает бежать к бассейну
+  if (player.x < SPLASH_X - 10) {
+    player.x += PLAYER_SPEED;
+  }
+
+  // прыгает когда добрался до края бассейна
+  if (player.x >= SPLASH_X - 40 && player.onGround) {
+    player.vy = JUMP_FORCE * 1.2;
+    player.onGround = false;
+  }
+
+  // физика прыжка
+  if (!player.onGround) {
+    player.vy += GRAVITY;
+    player.y += player.vy;
+  }
+
+  // анимация бега
+  player.frameTimer++;
+  if (player.frameTimer > 8) { player.frame = (player.frame + 1) % 2; player.frameTimer = 0; }
+
+  // камера следит
+  const targetCam = player.x - 150;
+  camera += (targetCam - camera) * 0.12;
+  camera = Math.max(0, Math.min(WORLD_WIDTH - W, camera));
+
+  // упал в бассейн (ниже воды)
+  const poolSurfaceY = GROUND_Y - 20;
+  if (!player.onGround && player.y > poolSurfaceY && player.x >= SPLASH_X - 60) {
+    player.y = poolSurfaceY + 10;
+    state = 'splash';
+    splashTick = 0;
+  }
+}
+
+function updateSplash() {
+  animTick++;
+  splashTick++;
+  // после ~2 секунд показываем экран победы
+  if (splashTick > 90) {
     state = 'win';
   }
 }
@@ -475,6 +525,93 @@ function drawPlayer(x, y, frame, onGround) {
   px_(cx_ + 2, 33, 10, 2, C.yellowD);
 }
 
+// Бассейн
+function drawPool(camX) {
+  const sx = Math.round(POOL_X - camX);
+  if (sx > W + 160 || sx < -160) return;
+
+  const pw = 120, ph = 36;
+  const px_ = sx, py = GROUND_Y - ph;
+
+  // бортик
+  px(px_ - 6, py - 8, pw + 12, 10, C.grey);
+  px(px_ - 4, py - 6, pw + 8, 8, '#C8C8C8');
+
+  // вода (анимированная)
+  const wave1 = Math.sin(animTick * 0.08) * 2;
+  const wave2 = Math.sin(animTick * 0.06 + 1) * 2;
+  px(px_, py, pw, ph, '#1A6AAA');
+  // блики воды
+  ctx.fillStyle = '#2A8ACA';
+  ctx.fillRect(px_ + 8,  py + 6 + wave1, 30, 4);
+  ctx.fillRect(px_ + 60, py + 14 + wave2, 40, 4);
+  ctx.fillRect(px_ + 20, py + 22 + wave1, 20, 3);
+  // блик сверху
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(px_, py, pw, 8);
+
+  // лесенка
+  px(px_ + pw - 14, py - 8, 6, ph + 8, '#A0A0A0');
+  px(px_ + pw - 10, py + 6,  4, 4, '#C8C8C8');
+  px(px_ + pw - 10, py + 16, 4, 4, '#C8C8C8');
+  px(px_ + pw - 10, py + 26, 4, 4, '#C8C8C8');
+}
+
+// Брызги при прыжке в бассейн
+function drawSplash(camX) {
+  const cx = Math.round(SPLASH_X - camX);
+  const py = GROUND_Y - 24;
+
+  const t = splashTick;
+  const fade = Math.max(0, 1 - t / 60);
+
+  // круги расходящейся волны
+  for (let i = 1; i <= 3; i++) {
+    const r = t * 1.2 * i * 0.4 + 8;
+    ctx.strokeStyle = `rgba(100,200,255,${fade * 0.6 / i})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(cx, py + 10, r, r * 0.35, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // капли вверх
+  const drops = [
+    { dx: -30, dy: -60, delay: 0 },
+    { dx: -18, dy: -80, delay: 2 },
+    { dx:  0,  dy: -90, delay: 0 },
+    { dx:  18, dy: -78, delay: 3 },
+    { dx:  32, dy: -62, delay: 1 },
+    { dx: -8,  dy: -70, delay: 4 },
+    { dx:  10, dy: -85, delay: 2 },
+  ];
+
+  for (const d of drops) {
+    const dt = Math.max(0, t - d.delay);
+    if (dt <= 0) continue;
+    const dropT = Math.min(dt / 25, 1);
+    const dropX = cx + d.dx * dropT;
+    const dropY = py + d.dy * dropT + 0.5 * 0.8 * dt * dt * 0.3; // гравитация
+    const alpha = Math.max(0, 1 - dt / 35) * fade;
+    ctx.fillStyle = `rgba(150,220,255,${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(dropX, dropY, 4, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // герой в воде (торчит только голова)
+  if (t > 8) {
+    const heroX = Math.round(player.x - camX);
+    const submerge = Math.min(t / 15, 1);
+    // только голова видна
+    px(heroX + 4, py - 14 + Math.round(submerge * 10), 16, 14, C.skin);
+    px(heroX + 4, py - 14 + Math.round(submerge * 10), 16, 4, C.brown);
+    // очки/капли воды на голове
+    ctx.fillStyle = 'rgba(150,220,255,0.7)';
+    ctx.fillRect(heroX + 4, py - 14 + Math.round(submerge * 10), 16, 3);
+  }
+}
+
 // Облака
 function drawClouds(camX) {
   const clouds = [
@@ -595,8 +732,11 @@ function drawGameScreen() {
   // отель
   drawHotel(camera);
 
-  // персонаж
-  drawPlayer(player.x - camera, player.y, player.frame, player.onGround);
+  // бассейн (только в состоянии play)
+  if (state === 'play') drawPool(camera);
+
+  // персонаж (только в play, в jump/splash рисуется отдельно в gameLoop)
+  if (state === 'play') drawPlayer(player.x - camera, player.y, player.frame, player.onGround);
 
   // прогресс-бар
   const progress = Math.min(player.x / WIN_X, 1);
@@ -726,13 +866,24 @@ function drawWinScreen() {
 function gameLoop() {
   ctx.clearRect(0, 0, W, H);
 
-  updateGame();
-
   if (state === 'start') {
+    animTick++;
     drawStartScreen();
   } else if (state === 'play') {
+    updateGame();
     drawGameScreen();
+  } else if (state === 'jump') {
+    updateJump();
+    drawGameScreen();
+    drawPool(camera);
+    drawPlayer(player.x - camera, player.y, player.frame, player.onGround);
+  } else if (state === 'splash') {
+    updateSplash();
+    drawGameScreen();
+    drawPool(camera);
+    drawSplash(camera);
   } else if (state === 'win') {
+    animTick++;
     drawWinScreen();
   }
 
